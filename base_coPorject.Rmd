@@ -1,0 +1,609 @@
+---
+title: "Rapport consomation"
+author: "Firas Ouederni"
+date: "27/03/2021"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango # code cells style
+    df_print: paged  # print the output table as tbl
+     # ley userchoose to see code
+    fig_width: 8
+    fig_eigth: 8
+    toc: true
+    toc_float: true
+    toc_depth: 3
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+***
+
+```{r Libs}
+library(factoextra)
+library(Factoshiny)
+library(kableExtra)
+library(naniar)
+library(mlr)
+library(dplyr)
+library(plotly)
+library(DT)
+library(rmdformats)
+library(GGally)
+library(corrplot)
+library(RColorBrewer)
+```
+
+***
+# Introduction 
+
+L'objectif de ce rapport est purement descriptif, il s'agit d'explorer un sensemble d'observations de données dépenses issue d'une enquête "budget de famille" menée par l’INSEE pour connaître le poids des grands postes de consommation dans le budget des ménages par tranche d’age. On a la répartition de la dépense annuelle moyenne par ménage sur les grands postes de consommation pour l’ensemble de la population française.
+
+En appliquant l'analyse en composantes principales, nous essayons de voir s'il y a des classes d'ages qui ont des profils de dépenses  très proches, s'il ya des postes de dépenses qui évoluent de la même façon selon l’âge et quel typologie peut ont définir pour les individus à partir es variables et réciproquement.
+
+***
+# Importation du jeu de donnée
+
+***
+
+```{r}
+
+data <- read.csv("base_conso.csv", sep = ";", row.names = 1)
+
+data
+
+```
+
+***
+# Exploration et description du jeu de donnée 
+
+***
+
+```{r}
+
+sumr <- summarizeColumns(data)
+
+kable(sumr) %>%
+ kable_paper('hover', 5) %>%
+  kable_styling('striped', F, fixed_thead = TRUE, )
+
+```
+
+***
+
+Les données utilisées ici décrivent les dépense annuelle pour l'ensemble de la population française regroupé par tranche d’age (moins de 25 ans, de 25 à 34 ans, de 35 à 44ans, de 45 à 54 ans, de 55 à 64 ans, de 65 à 74 ans, 75 ans et plus) ou en fonction des revenus (par déciles : 10% des ménages ayant les revenus les plus faibles, les personnes ayant les revenus entre 10 et 20% les plus faibles, ...).
+
+Elles contiennent 18 individus décrits par 34 variables dont toutes sont des variables quantitatives discrètes. 
+Ces variables correspondent au dépense annuelle moyenne par ménage sur les grands postes de consomation  (pain et céréales, viandes, poissons et fruits de mer, boissons,tabac, eau et électricité, ...). Sauf les variables de 27 à 31  qui expriment les totaux des dépenses des groupe d'individus.
+
+
+
+
+***
+
+# Réalisation de l'ACP 
+
+***
+### Choix des élements actifs
+
+***
+
+On étudie les profils des ménages uniquement en fonction de leur dépense. Les colonnes de 1 à 26 et de 31 à 34 correspondent à leurs dépenses annuelle sur 30 différentes rubriques, ce sont les variables actives du jeu de donnée.
+
+Pour les colones de 27 à 30, trois correspondent respectivement à des totaux partiels et une à la dépense totale calculés sur la base des variables actives. Donc ces variables n'appartiennent pas aux profils des postes de ménages et utilisent une information déja donnée par les autres variables. Nous les utiliserons comme variables illustratives.
+
+Puisque nous allons s’intéresser dans notre étude à l’évolution des profils des dépenses selon l'age, et qu'on dispose de deux groupes d'individus (par tranche d'age et par décile), les individus de 1 à 7 seront donc utiliser comme des individus actives.
+
+
+
+***
+### Calcule de l’ACP sur les individus/variables actifs 
+
+***
+
+* Individus actifs (lignes 1:7): individus qui sont utilisés lors de l’analyse en composantes principales.
+
+* Individus supplémentaires (lignes 8:18): les coordonnées de ces individus seront prédites en utilisant l’information et les paramètres de l’ACP obtenue avec les individus/variables actifs.
+
+* Variables actives (colonnes 1:27 & 31:24): variables utilisées pour l’ACP.
+
+* Variables quantitatives supplémentaires (colonnes 27:30): les coordonnées de ces variables seront prédites
+
+***
+
+```{r}
+
+res.pca <- PCA(data, ind.sup = 8:18, quanti.sup =27:30, graph = FALSE)
+fviz_pca_ind(res.pca, repel = TRUE, col.ind = "coral")
+ggplotly(fviz_pca_var(res.pca, labelsize = 2, col.var = "#15317E", col.quanti.sup = "red"))
+
+```
+
+
+
+***
+# Valeurs propres et Variances
+
+***
+## Table de variance
+
+```{r}
+eig <- round(get_eigenvalue(res.pca), 2)
+eig <- data.frame(eig)
+
+eig$cumulative.variance.percent[1:2] <- cell_spec(eig$cumulative.variance.percent[1:2], color = "red")
+
+eig$eigenvalue[1:2] <- cell_spec(eig$eigenvalue[1:2], color = "red")
+
+eig$variance.percent[1:2] <- cell_spec(eig$variance.percent[1:2], color = "red")
+
+
+kbl(eig, escape = F) %>%
+  kable_minimal('hover', 5) 
+
+
+```
+***
+
+### Détermination des axes principaux
+
+***
+
+les valeurs propres (eigenvalues dans la table de variance) mesurent la quantité de variance (inertie) expliquée par chaque axe principal. Les valeurs propres sont grandes pour les deux premiers axes et petits pour les axes suivants. 
+
+Le pourcentage d’inertie expliquée par la 1er dimension qui est d’ordre 58.51% et par la 2eme dimension qui est d’ordre  31.14%. Ainsi la 1ere et 2eme dimension vont expliquer 92.66% de l’information qui est contenue dans le jeu de données.D'ou nous avons un exellent résumé qui synthétise presque parfaitement les variables. Alors que sur les dernières dimensions il ya très peu d'information, donc inutile de les étudier.
+
+Autrement dit, les premiers axes 1 et 2 correspondent aux directions portant la quantité maximale d'information contenue dans le jeu de données.
+
+***
+
+### Graphique des valeurs propres
+
+***
+
+```{r}
+fviz_screeplot(res.pca, addlabels = TRUE, main = "" )
+
+```
+
+***
+# Etude du nuage des Individus actifs
+
+***
+### Graphe des Individus actives
+
+***
+
+```{r}
+fviz_mca_ind(res.pca, col.ind = "coral", invisible = "ind.sup", repel = TRUE)
+
+```
+
+***
+
+### Interprétation
+
+*** 
+
+Ce nuage de point traduit la quantité d’information disponible retenue par les deux premiers axes. On remarque qu'il ya une forte variabilité puisque le nuage de point est dispersé, les individus sont bien représentées.
+
+On peut visuellement interpréter les proximités entre les individus. On observe que les individus de **35 à 44 ans** et de **45 à 54 ans** ont un comportement similaire puisuqe ils sont proche, c'est à dire leur dépense annuelle sont à peu prés les memes quel que soit le type de consommation.
+
+Par contre, les individus de **35 à 45 ans** et **moins de 25 ans** ont des comportements très différents, ces deux groupes sont complétement opposés sur le premier axe, ça veut des dépenses différentes.
+
+De meme pour les individus ayant un age de **25 à 34 ans** et de **65 à 74 ans** qui sont opposés sur le deuxième axe, ils ont des comportements très différents.
+
+ 
+ 
+
+
+
+
+***
+### Tableau des résultats {.tabset .tabset-fade .tabset-pills}
+
+***
+
+```{r}
+ind <- get_pca_ind(res.pca)
+
+```
+
+#### coord
+
+```{r}
+d_coord <- round(ind$coord[,1:2],2)
+d_coord <- data.frame(d_coord)
+
+d_coord[1:2] <- lapply(d_coord[1:2], function(x) {
+  cell_spec(x, bold = T, color = spec_color(x, end = 0.9, direction = -1, option = "C"),
+              font_size = spec_font_size(x))
+  })
+
+
+kbl(d_coord[1:2], escape = F, align = "c") %>%
+  kable_material("hover",5) %>%
+  kable_styling("striped",full_width = F)
+
+```
+
+
+#### cos2
+
+```{r}
+d_cos <- round(ind$cos[,1:2],2)
+d_cos <- data.frame(d_cos)
+
+d_cos[1:2] <- lapply(d_cos[1:2], function(x) {
+  cell_spec(x, bold = T, color = spec_color(x, end = 0.9, direction = -1, option = "C" ),
+              font_size = spec_font_size(x))
+  })
+
+
+kbl(d_cos[1:2], escape = F, align = "c") %>%
+  kable_material("hover",5) %>%
+  kable_styling("striped",full_width = F)
+
+```
+
+***
+
+#### contrib 
+
+```{r}
+d_contrib <- round(ind$contrib[,1:2],2)
+d_contrib <- data.frame(d_contrib)
+
+d_contrib[1:2] <- lapply(d_contrib[1:2], function(x) {
+  cell_spec(x, bold = T, color = spec_color(x, end = 0.9, direction = -1, option = "C" ),
+              font_size = spec_font_size(x))
+  })
+
+
+kbl(d_contrib[1:2], escape = F, align = "c") %>%
+  kable_material("hover",5) %>%
+  kable_styling("striped",full_width = F)
+
+
+```
+
+***
+
+#### dist
+
+```{r}
+
+ind$dist <- data.frame(ind$dist)
+colnames(ind$dist) <- "Dist"
+
+kbl(ind$dist, escape = F, align = "c") %>%
+  kable_minimal("hover",5) %>%
+  kable_styling("striped",full_width = F) %>%
+  column_spec(2, color = "white",
+              background = spec_color(ind$dist[1:7, 1], end = 0.9, direction = -1, option = "E"))
+  
+
+```
+
+
+### {.tabset .tabset-fade .tabset-pills}
+
+* **Contribution aux axes principaux** :
+
+On remarque les individus **moins de 25 ans**, **De 45 à 54 ans**, **75 ans et plus** et **De 35 à 44 ans** ont des pourcentages de contribution élevés pour l'axe 1 qui correspondant respéctivement aux **30.47**, **23.79**, **21.14** et **16.49**. Ces variables contribuent le plus à la difinition de la  dimensions 1.
+
+Tandis que, les individus **De 65 à 74 ans**, **De 25 à 34 ans** et **De 55 à 64 ans** ont des pourcentages de contribution élevés pour l'axe 2 qui correspondant respéctivement aux **21.12**, **17.55** et **8.26**. Ces variables contribuent le plus à la difinition de la  dimensions 2.
+
+Les variables les plus importantes  peuvent être mises en évidence sur le graphe de barplot comme suit: 
+
+#### Reset
+
+> On peut voir que les variables **moins de 25 ans**, **75 ans et plus ** et **De 45 à 54 ans** contribuent le plus aux dimensions 1 et 2 puique ils depasse la contribution moyenne attendue (14.28% d'aprés la ligne du graph)
+
+#### Total Contribution to Dim 1-Dim 2
+
+***
+
+```{r}
+ggplotly (
+  fviz_contrib(res.pca, choice = "ind", axes = 1:2)
+)
+
+```
+
+#### Contribution to Dim 1
+
+***
+
+```{r}
+ggplotly (
+  fviz_contrib(res.pca, choice = "ind", axes = 1)
+)
+
+```
+
+#### Contribution to Dim 2
+
+***
+
+```{r}
+ggplotly (
+  fviz_contrib(res.pca, choice = "ind", axes = 2)
+)
+
+```
+
+
+
+### {.tabset .tabset-fade .tabset-pills}
+
+ * **Qualité de représentation** :
+
+On remarque que la somme des cos2 sur les deux composantes principales pour tous les individus est élevé qui est plus de **0.7** ce qui indique une bonne représentation sur ces deux axes. 
+
+#### Reset 
+
+
+#### Cos2 to Dim1 1-2
+
+***
+
+```{r}
+ggplotly(
+  fviz_cos2(res.pca, choice = "ind", axes = 1:2)
+)
+
+```
+
+***
+# Etude du nuage des variables
+
+***
+
+### Graphe des Variables actives
+
+***
+
+```{r}
+cor_cercle <- fviz_pca_var(res.pca, col.var = "#15317E", invisible = "quanti.sup", labelsize = 3)
+
+ggplotly( 
+         ggpubr::ggpar(cor_cercle, title = "Cercle de corrélation - Variables Actives"))
+
+```
+
+
+
+Le graphique ci-dessus est connu sous le nom de graphique de corrélation des variables. Il montre les relations entre toutes les variables. 
+
+On observe que toutes les variables sont loin de l'origine du graphique, cette distance mesure leurs qualités de représentation de ces.De plus il sont très proches ou meme sur le cercle de corrélation, d'ou il sont bien représentées par l'ACP.
+
+Prenant par example:
+
+* Les variables **eaux.boissons.jus**, **sucre.produits_a_base_de_sucre_ou_cacao**, **autres_biens.services** et **autres_dépenses_alimentation** sont proche et meme il ya ceux qui sont confondu, d’où il sont corrélées positivement.
+
+* La variables **logement.eau.gaz.électricité** est opposée avec les variables **fruits** et **huiles.graisses** formant un angle presque 180°, d’où il sont corrélées négativement.
+
+* Les variables  **boissons_alcoolisées** et **santé** forment un angle 90° avec les variables **restauration** et **cantines** , d’où il ne sont pas du tout corrélées.
+
+
+***
+
+### Tableau des résultats pour les Variables {.tabset .tabset-fade .tabset-pills}
+
+***
+
+```{r}
+varr <- get_pca_var(res.pca)
+
+```
+
+#### coord
+
+```{r}
+v_coord <- round(varr$coord[,1:2],2)
+v_coord <- data.frame(v_coord)
+
+v_coord[1:2] <- lapply(v_coord[1:2], function(x) {
+  cell_spec(x, bold = T, color = spec_color(x, end = 0.9, direction = -1, option = "C" ),
+              font_size = spec_font_size(x))
+  })
+
+
+kbl(v_coord[1:2], escape = F, align = "c") %>%
+  kable_paper("hover", 5) %>%
+  kable_styling(c("striped", "condensed"), full_width = F, fixed_thead = TRUE)
+
+```
+
+#### cor
+
+```{r}
+v_cor <- round(varr$cor[,1:2],2)
+v_cor <- data.frame(v_cor)
+
+v_cor[1:2] <- lapply(v_cor[1:2], function(x) {
+  cell_spec(x, bold = T, color = spec_color(x, end = 0.9, direction = -1, option = "C" ),
+              font_size = spec_font_size(x))
+  })
+
+
+kbl(v_cor[1:2], escape = F, align = "c") %>%
+  kable_paper("hover", 5) %>%
+  kable_styling(c("striped", "condensed"), full_width = F, fixed_thead = TRUE)
+
+```
+
+#### cos2
+
+```{r}
+v_cos <- round(varr$cos2[,1:2],2)
+v_cos <- data.frame(v_cos)
+
+v_cos[1:2] <- lapply(v_cos[1:2], function(x) {
+  cell_spec(x, bold = T, color = spec_color(x, end = 0.9, direction = -1, option = "C" ),
+              font_size = spec_font_size(x))
+  })
+
+
+kbl(v_cos[1:2], escape = F, align = "c") %>%
+  kable_paper("hover", 5) %>%
+  kable_styling(c("striped", "condensed"), full_width = F, fixed_thead = TRUE)
+
+```
+
+
+#### contrib 
+
+```{r}
+v_contrib <- round(varr$contrib[,1:2],2)
+v_contrib <- data.frame(v_contrib)
+
+v_contrib[1:2] <- lapply(v_contrib[1:2], function(x) {
+  cell_spec(x, bold = T, color = spec_color(x, end = 0.9, direction = -1, option = "C" ),
+              font_size = spec_font_size(x))
+  })
+
+
+kbl(v_contrib[1:2], escape = F, align = "c") %>%
+  kable_paper("hover", 5) %>%
+  kable_styling(c("striped", "condensed"), full_width = F, fixed_thead = TRUE)
+
+```
+
+***
+
+### Variable mal représenté
+
+***
+
+Pour estimer la qualité de représentation des variables on utilise le **cos2** en créant un bar plot comme l'illustre le graph ci dessous. On remarque que la variable **enseignement** est mal représentée avec un **cos2** le plus faible qui est égale à **0.47**.
+
+```{r}
+ggplotly(
+  fviz_cos2(res.pca, choice = "var", axes = 1:2)
+)
+
+```
+
+***
+
+### Matrice de corrélation des variables pain.céréales, laits.fromages et logement.eau.gaz.électricité
+
+***
+
+```{r}
+mycor <- data[, c(1,4,17)]
+mycor <- round(cor(mycor), 2)
+
+corrplot.mixed(mycor, order="hclust", tl.col="red", lower.col = "black")
+
+
+```
+
+
+La Matrice de corrélation nous indique que la variable **logement.eau.gaz.électricité** n'est pas corrélé ni avec la variable **laits.fromages** ni avec la varaible **pain.céréales** qu'on peut l'éstimier graphiquement avec le cercle de crrélation puisuqe
+**logement.eau.gaz.électricité** forme un angle 90° avec **laits.fromages** et **pain.céréales** ce qui indique qu'il sont indépendantes entre elles.
+
+Tandis que les variables **pain.céréales** et **laits.fromages** sont fortement positivement corrélées avec un coef de **0.95**. Puisque ces deux variables sont proche dans le cercle de corrélation, on peut éstimer cette corrélation.   
+
+
+
+
+
+***
+### Graphe des variables supplémentaires
+
+***
+
+```{r}
+plot <- fviz_pca_var(res.pca, invisible ="var", labelsize = 4)
+ggplotly(
+  ggpubr::ggpar(plot, title = "Cercle de corrélation - Variables Supplémentaires") + theme_bw()
+)
+
+```
+***
+
+#  Description automatique des axes factoriels {.tabset .tabset-fade .tabset-pills}
+
+***
+```{r}
+des <- dimdesc(res.pca)
+
+```
+
+## Dimension 1
+
+
+
+```{r}
+
+d_dim1 <- round(des$Dim.1$quanti, 2)
+
+d_dim1 <- as.data.frame(d_dim1)
+
+
+
+kbl(d_dim1[1:2], escape = F, align = "c") %>%
+  kable_paper("hover", 5) %>%
+  column_spec(2, bold = T, color = spec_color(as.numeric(d_dim1$correlation[1:nrow(d_dim1)]), 
+                                              direction = -1, end = 0.9)) %>%
+  kable_styling(c("striped", "condensed"), full_width = F, fixed_thead = TRUE)
+
+
+
+```
+
+## Dimension 2
+
+```{r}
+d_dim2 <- round(des$Dim.2$quanti, 2)
+
+d_dim2 <- as.data.frame(d_dim2)
+
+
+
+kbl(d_dim2[1:2], escape = F, align = "c") %>%
+  kable_paper("hover", 5) %>%
+  column_spec(2, bold = T, color = spec_color(as.numeric(d_dim2$correlation[1:nrow(d_dim2)]), 
+                                              direction = -1, end = 0.9)) %>%
+  kable_styling(c("striped", "condensed"), full_width = F, fixed_thead = TRUE)
+
+```
+***
+
+# Analayse des résulats 
+
+D’après les résultats précèdents, nous pouvons conclure que l’axe 1 correspond plitot aux dépenses pour les produits alimentaires puisque la variable total_alimentation a une corrélation positive presque égale à 1, signifie qu’elle décrit parfaitement ce premier axe. D’où, les dépenses pour l’alimentation sont très liées au coordonnés sur l’axe 1. Autrement dit, le premier groupe ayant un age de **35 à 44 ans**, **45 à 54 ans**, **55 à 64 ans** et **25 à 34 ans** ont des dépenses élevés pour la nourriture .
+
+Au contraire, le deuxième groupe ayant un age de **Moins de 25 ans**, **De 65 à 74 ans** et ** 75 ans et plus** avec des coordonnés faible sur l’axe 1, ont des dépenses faibles pour la nourriture.
+
+Ce que nous pouvons expliquer par le fait qu’au de là de 60 ans, les parents sont en retraite et voient leurs ressources financières diminuer. De plus les personnes de 65 ans et plus, n’ont en général pas d’enfant à charge, et par suite le montant de leurs achats est moins élevé. Aussi pour les personnes moins de 25 ans, qui n’ont pas encore un source de revenu et que leur parent s’occupe d’eux. 
+
+L’alimentation est aussi une pratique sociale, familiale et culturelle qui permet de prendre place dans son environnement familial et social (repas de famille, sortie au restaurant, tradition et fêtes religieuses). Ce qui explique aussi le fait des dépenses élevés par le premier groupe (**35 à 44 ans**, **45 à 54 ans**, **55 à 64 ans** et **25 à 34 ans** ) qui sont potentiellement des parents qui ont au moins un enfant, ou meme des nouveau marries dont ils se chargent de toutes les nécessités de leur familles. Ce qui explique aussi les dépenses élevés pour les loisirs, l’ameublement et l’équipement ménager. Puisque les variables **ameublement.équipement_ménager** et **loisirs.culture**  sont fortement positivement corrélés avec l’axe 1.
+
+•	On peut conclure que l’axe 1 oppose les individus situés à droite du graph qui ont des dépenses élevées des individus situés à gauche du graph qui ont des dépenses faibles pour les produits alimentaireset non alimentaires comme les loisirs, les cultures et l’ameublement.
+
+>	Variabilité
+
+Dans le deuxième axe, les variables **logement.eau.gaz.électricité**, **Cafés.bars.et.assimilés**, **tabac** et **communications** sont fortement corrélées avec l’axe 2. Ça veut dire ce premier groupe ayant un age de **Moins de 25 ans**, **25 à 34 ans** et **35 à 44 ans** ont des dépenses élevés pour ces derniers besoins puisque ces variables ont de forte coordonnées sur l’axe 2.
+
+Au contraire, les opposés de ce premier groupe par l’axe 2 ont des coordonnées faibles sur l’axe 2, sont le deuxième groupe ayant un age **De 55 à 64 ans**, **De 65 à 74 ans** et **75 ans et plus** qui ont des dépenses faibles pour ces derniers besoins comme par example le logement, eau, gaz et électricité, ce que nous pouvons l’expliquer par le fait que les agés de 55 ans et plus, leur consommation en eau, gaz et électricité diminue puisque ils vient seul et leur enfant part pour poursuivre leurs études ce qui explique que le groupe des jeunes ayant un age de moins de 25 ans qui dépensent le plus pour logemet , eau, gaz et éléctricité. Au contraire pour le groupe de 25 ans et plus, ou le nombre de leur famille est grand. 
+
+Par apport aux aliments de **fruits**, **huiles graisses**, **poissons** et **fruit de mer**, on remarque qu’ils ont des corrélations négatives avec l’axe 2. Cela signifie que le deuxième groupe qui ont un age **De 55 à 64 ans**, **De 65 à 74 ans** et **75 ans et plus** ayant des coordonnés faibles sur le deuxième axe, ont des dépenses élevés pour ces derniers besoins. Au contraire, le premier groupe **Moins de 25 ans**, **25 à 34 ans** et **35 à 44 ans** ayant de forte coordonnés sur ce deuxième axe, ont des dépenses faibles pour ces besoins. 
+Les fruits, les poissons et les fruits de mer sont connus pour etre bénéfiques pour la mémoire et la concentration et les huiles et graisses sont très bonnes pour la santé. Ce qui explique les habitudes différentes des deux groupes dont les plus agés de 55 ans et plus, cherche à avoir une alimentation saine et équilibrée pour garder une bonne santé. Alors que les jeunes ont un mode de vie différent, ils dépensent plus sur leur activités quotidiennes comme les cafés bars et le tabac.
+
+•	On peut conclure que l’axe 2 oppose les groupes des vieux situées en bas du graph qui dépensent le plus pour leurs bien (conscience pour leur santés), des groupes des jeunes situées en haut qui dépensent le plus sur leur mode de vie sans tenir compte aux mesures générale concernant leur santé.
+
+>	Différenciation
+
+
+### Il y a donc une tendance générale dans les données, liée à l’âge, qui permet d’expliquer la variation de la dépense de plusieurs façons.
+
+
+
+
